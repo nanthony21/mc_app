@@ -1,0 +1,6 @@
+#!/bin/bash
+BASEDIR=$(dirname "$BASH_SOURCE")
+cd $BASEDIR
+
+bokeh serve --show --allow-websocket-origin 192.168.0.102:6004 --allow-websocket-origin localhost:6004 --port 6004 .
+

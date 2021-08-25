@@ -25,7 +25,6 @@ def configureLogger():
     root.addHandler(handler)
     return root
 
-
 logger = configureLogger()
 useRealDB = False
 
@@ -67,3 +66,4 @@ page = Page(session)
 bokeh.io.output_file("interactive_graphs.html")
 bokeh.io.show(page.tabs)
 bokeh.plotting.curdoc().add_root(page.tabs)
+

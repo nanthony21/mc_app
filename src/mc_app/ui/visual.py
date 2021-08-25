@@ -18,19 +18,21 @@ import base64
 import io
 import glob
 import os
+import typing as t_
 
 
-def side_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=1):
-    if root == None:  # first iteration. find all origins
-        roots = [i for i in [j for j in G.nodes()] if G.nodes()[i]['parent'] == 'null']
+def side_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap: float = 1.0):
+    import pdb
+    # pdb.set_trace()
+    if root is None:  # first iteration. find all origins
+        roots = [node for node, degree in G.in_degree() if degree == 0]
         for num, i in enumerate(roots):
             pos = side_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
                                 pos=pos)
         return pos
-    if pos == None:
-        pos = {root: center}
-    else:
-        pos[root] = center
+    if pos is None:
+        pos = {}
+    pos[root] = center
     neighbors = list(G.neighbors(root))
     if len(neighbors) != 0:
         dy = height / (len(neighbors))
@@ -41,21 +43,21 @@ def side_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=1):
     return pos
 
 
-def date_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=0.2, orig_date=None):
+def date_pos(G, root=None, height=1, center=(0, 0), pos=None, orig_date=None):
     if root is None:  # first iteration. find all origins
-        roots = [i for i in [j for j in G.nodes()] if
-                 G.nodes()[i]['parent'] == 'null']  # list of nodes with no parents (root nodes)
+        roots = [node for node, degree in G.in_degree() if degree == 0]  # list of nodes with no parents (root nodes)
         dates = [datetime.datetime.strptime(G.nodes(data=True)[i]['birthDate'], '%d-%m-%Y') for i in
                  roots]  # a list of the birthdates for each  of the root samples
+        import pdb
+        # pdb.set_trace()
         orig_date = min(dates)  # The earliest of the dates
         for num, i in enumerate(roots):
             pos = date_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
                                 pos=pos, orig_date=orig_date)
         return pos
     if pos is None:
-        pos = {root: center}
-    else:
-        pos[root] = center
+        pos = {}
+    pos[root] = center
     neighbors = list(G.neighbors(root))
     if len(neighbors) != 0:
         dy = height / (len(neighbors))
@@ -68,50 +70,53 @@ def date_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=0.2, orig_dat
     return pos
 
 
-def tree_pos(G, root=1, width=1., vert_gap=0.2, vert_loc=0, xcenter=0, pos=None, parent=None):
+def tree_pos(G, root: int = 1, width: float = 1., vert_gap: float = 0.2, vert_loc: float = 0,
+             xcenter: float = 0.0, pos: t_.Dict[int, t_.Tuple[float, float]] = None):
+    """
+    If there is a cycle that is reachable from root, then this will see infinite recursion.
 
-    '''If there is a cycle that is reachable from root, then this will see infinite recursion.
+    Args:
        G: the graph must be of a directed type
-       root: the root node of current branch
+       root: node id of the root of the current branch
        width: horizontal space allocated for this branch - avoids overlap with other branches
        vert_gap: gap between levels of hierarchy
        vert_loc: vertical location of root
        xcenter: horizontal location of root
-       pos: a dict saying where all nodes go if they have been assigned
-       parent: parent of this branch.'''
+       pos: a dict keyed by node id with values of (x,y) coordinates of node positions
+   """
     if pos is None:
-        pos = {root: (xcenter, vert_loc)}
-    else:
-        pos[root] = (xcenter, vert_loc)
-    neighbors = list(G.neighbors(root))
-    if len(list(neighbors)) != 0:
+        pos = {}
+    pos[root] = (xcenter, vert_loc)
+    neighbors = list(G.neighbors(root))  # Neighbor nodes of the root
+    if len(neighbors) != 0:
         dx = width / len(neighbors)
         nextx = xcenter - width / 2 - dx / 2
         for neighbor in neighbors:
             nextx += dx
             pos = tree_pos(G, neighbor, width=dx, vert_gap=vert_gap,
-                                vert_loc=vert_loc - vert_gap, xcenter=nextx, pos=pos,
-                                parent=root)
+                                vert_loc=vert_loc - vert_gap, xcenter=nextx, pos=pos)
     return pos
 
 
 class MyGraph:
-
     def __init__(self):
-        slidercallback = CustomJS(args=dict(), code='''
-           var days = slider.value;
-           plot.x_range.end=plot.x_range.start + days;
-           plot.x_range.change.emit();
-        ''')
-        self.pos = tree_pos# side_pos
+        self._graph_layout = side_pos
         self.slider = Slider(start=1, end=60, value=7, step=1, title="X Zoom")
         self.plot = bokeh.plotting.figure(plot_width=400, plot_height=400,
                                           x_range=Range1d(-1, -1 + self.slider.value, bounds=(-2, 4e6)),
                                           y_range=Range1d(0, 1, bounds=(-0.5, 1.5)),
                                           tools='')
-        slidercallback.args['slider'] = self.slider
-        slidercallback.args['plot'] = self.plot
-        self.slider.js_on_change('value', slidercallback)
+
+        self.slider.js_on_change(
+            'value',
+            CustomJS(
+                args=dict(slider=self.slider, plot=self.plot),
+                code='''
+                   var days = slider.value;
+                   plot.x_range.end=plot.x_range.start + days;
+                   plot.x_range.change.emit();
+                ''')
+        )
         self.xSelectSwitch = RadioButtonGroup(labels=['By Generation', 'By Date'], active=0)
         self.plot.toolbar.logo = None
         self.plot.title.text = "Samples"
@@ -134,20 +139,23 @@ class MyGraph:
         self.widget = Column(self.plot, self.slider, self.xSelectSwitch)
 
     def getFromDB(self, sqlsession):
-        self.g = nx.DiGraph()
+        self._graph = nx.DiGraph()
         self.nodelist = [(i.id, i.toJSON()) for i in sqlsession.query(Sample).all()]
         '''Generate Networkx graph'''
-        self.g.add_nodes_from(self.nodelist)
+        self._graph.add_nodes_from(self.nodelist)
         edges = [(i[0], j) for i in self.nodelist for j in i[1]['children']]
-        self.g.add_edges_from(edges)
+        self._graph.add_edges_from(edges)
         '''Load nx graph to bokeh renderer'''
-        self.renderer = bokeh.plotting.from_networkx(self.g, self.pos)
-        for k, v in self.nodelist[0][
-            1].items():  # use the first item in the nodelist to generate the possible data sources for the hover tool
-            self.renderer.node_renderer.data_source.add([i[1][k] for i in self.nodelist], name=k)
+        self.renderer: bokeh.models.GraphRenderer = bokeh.plotting.from_networkx(self._graph, self._graph_layout)
 
-        self.renderer.node_renderer.data_source.add(
-            [self.colors[Sample.Type[j].value - 1] for j in [i[1]['type'] for i in self.nodelist]], 'color')
+        # use the first item in the nodelist to generate the possible data sources for the hover tool
+        for k, v in self.nodelist[0][1].items():
+            self.renderer.node_renderer.data_source.add([i[1][k] for i in self.nodelist], name=k)
+        import pdb
+        pdb.set_trace()
+        self.renderer.node_renderer.data_source.add(  # Set color based on sampletype
+            [self.colors[Sample.Type[nodeData['type']].value - 1] for nodeId, nodeData in self.nodelist],
+            'color')
         self.renderer.node_renderer.glyph = bokeh.models.Circle(size=20, fill_color='color')  # self.pallete[0])
         self.renderer.node_renderer.selection_glyph = bokeh.models.Circle(size=15, fill_color='color')
         self.renderer.node_renderer.hover_glyph = bokeh.models.Circle(size=15, fill_color=self.pallete[1])
@@ -171,10 +179,10 @@ class MyGraph:
         self.plot.renderers.append(self.renderer)
         # If something was previously selected add it reselect it now
         if oldsel:
-            self.renderer.node_renderer.data_source.selected = oldsel
+            self.renderer.node_renderer.data_source.selected.indices = oldsel.indices
 
 
-class InfoPanel():
+class InfoPanel:
     def __init__(self):
         self.idLabel = Paragraph(text='ID = ')
         self.speciesLabel = Paragraph(text='Species = ')
@@ -209,7 +217,7 @@ class InfoPanel():
         self.object = objectref
 
 
-class NewSamplePanel():
+class NewSamplePanel:
     def __init__(self):
         self.parentText = TextInput(title='Parent ID (enter species name here if sample is original)')
         self.typeButtons = RadioButtonGroup(labels=[i.name for i in Sample.Type], active=0)
@@ -441,7 +449,7 @@ class Page:
 
     def selectImageCallback(self, event: bokeh.events.ButtonClick):
         new = event.item
-        if new != None:
+        if new is not None:
             self.imagePanel.reset()
             imgurl = os.path.join("myco_app", 'static', new + ".png")
             img_source = ColumnDataSource(dict(url=[imgurl]))
@@ -455,20 +463,20 @@ class Page:
     def xSelectCallback(self, attr, old, new):
         print(new)
         if new == 1:
-            self.graph.pos = date_pos
+            self.graph._graph_layout = date_pos
             self.graph.plot.xaxis[0].axis_label = 'Days'
         elif new == 0:
-            self.graph.pos = side_pos
+            self.graph._graph_layout = side_pos
             self.graph.plot.xaxis[0].axis_label = 'Generations'
         else:
             print("xSelect buttton choice not valid")
         self.loadData()
 
-    def deleteSampleCallback(self, choice=None):
-        if choice == None:
+    def deleteSampleCallback(self, choice: bool = None):
+        if choice is None:
             print('del')
             choice = self.dialog.open('confirm', "Are you sure you want to delete?", self.deleteSampleCallback)
-        elif choice == True and self.infoPanel.object:
+        elif choice and self.infoPanel.object:
             if len(self.infoPanel.object.children) == 0:
                 imFiles = [i.text for i in self.infoPanel.object.images]
                 for i in imFiles:

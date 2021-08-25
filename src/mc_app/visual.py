@@ -4,10 +4,12 @@ Created on Sun Oct 22 15:36:35 2017
 
 @author: Nick
 """
+import networkx
+
 from SampleClass import Sample
 import networkx as nx
 from bokeh.models import Select, CustomJS,Slider,Panel,ColumnDataSource,PreText,Tabs,Column, RadioButtonGroup, Dropdown, Row, Button, Plot, DataTable, TextInput, TableColumn, Range1d, TapTool,PanTool,HoverTool, WheelZoomTool, Paragraph,ResetTool
-import bokeh.models.graphs
+import bokeh.plotting
 import bokeh.palettes
 import datetime
 from PIL import Image, ExifTags
@@ -16,6 +18,7 @@ import io
 import glob
 import os
 import time
+
 
 class myGraph():
     def tree_pos(self,G, root=1, width=1., vert_gap = 0.2, vert_loc = 0, xcenter = 0,
@@ -44,6 +47,7 @@ class myGraph():
                                     vert_loc = vert_loc-vert_gap, xcenter=nextx, pos=pos,
                                     parent = root)
         return pos
+
     def side_pos(self,G,root=None,height=1,center=(0,0),pos=None,xgap=1):
         if root==None: #first iteration. find all origins
             roots=[i for i in [j for j in G.nodes()] if G.nodes()[i]['parent']=='null']
@@ -62,6 +66,8 @@ class myGraph():
                 nexty+=dy
                 pos=self.side_pos(G,root=neighbor,height=dy,center=(center[0]+xgap,nexty),pos=pos)
         return pos
+
+
     def date_pos(self,G,root=None,height=1,center=(0,0),pos=None,xgap=0.2,orig_date=None):
         if root==None: #first iteration. find all origins
             roots=[i for i in [j for j in G.nodes()] if G.nodes()[i]['parent']=='null'] #list of nodes with no parents (root nodes)
@@ -84,6 +90,8 @@ class myGraph():
                 nextx=(birthDate-orig_date).days
                 pos=self.date_pos(G,root=neighbor,height=dy,center=(nextx,nexty),pos=pos,orig_date=orig_date)
         return pos
+
+
     def __init__(self):
         slidercallback = CustomJS(args=dict(),code='''
            var days = slider.value;
@@ -119,15 +127,17 @@ class myGraph():
         self.plot.toolbar.active_scroll=tools[1] #sets the scroll zoom to be active immediately.
         self.colors=['red','blue','green','purple','cyan','yellow']
         self.widget=Column(self.plot,self.slider,self.xSelectSwitch)
+
+
     def getFromDB(self,sqlsession):
-        self.g=nx.DiGraph()
-        self.nodelist=[(i.id,i.toJSON()) for i in sqlsession.query(Sample).all()]
+        self.g = nx.DiGraph()
+        self.nodelist = [(i.id, i.toJSON()) for i in sqlsession.query(Sample).all()]
         '''Generate Networkx graph'''
         self.g.add_nodes_from(self.nodelist)
-        edges=[(i[0],j) for i in self.nodelist for j in i[1]['children']]
+        edges = [(i[0], j) for i in self.nodelist for j in i[1]['children']]
         self.g.add_edges_from(edges)
         '''Load nx graph to bokeh renderer'''
-        self.renderer = bokeh.models.graphs.from_networkx(self.g, self.pos)
+        self.renderer = bokeh.plotting.from_networkx(self.g, self.pos)
         for k,v in self.nodelist[0][1].items(): #use the first item in the nodelist to generate the possible data sources for the hover tool
             self.renderer.node_renderer.data_source.add([i[1][k] for i in self.nodelist],name=k)
 
@@ -144,8 +154,8 @@ class myGraph():
         self.renderer.inspection_policy = bokeh.models.graphs.NodesOnly()
 
         try:
-            oldrenderer=[(i,v) for i,v in enumerate(self.plot.renderers) if isinstance(v,bokeh.models.GraphRenderer)][0]
-            oldsel=oldrenderer[1].node_renderer.data_source.selected
+            oldrenderer = [(i,v) for i,v in enumerate(self.plot.renderers) if isinstance(v,bokeh.models.GraphRenderer)][0]
+            oldsel = oldrenderer[1].node_renderer.data_source.selected
         except:
             oldsel=None
             oldrenderer=None
@@ -154,7 +164,8 @@ class myGraph():
         self.plot.renderers.append(self.renderer)
         #If something was previously selected add it reselect it now
         if oldsel:
-            self.renderer.node_renderer.data_source.selected=oldsel
+            self.renderer.node_renderer.data_source.selected = oldsel
+
 
 class InfoPanel():
     def __init__(self):
@@ -165,8 +176,8 @@ class InfoPanel():
         self.notesLabel=PreText(text='Notes = ')
         self.addNoteButton=Button(label='Add Note')
         self.imagesLabel=Paragraph(text='# of Images = ')
-        self.loadImageButton=Button(label='Upload Image',button_type='success')
-        self.deleteButton=Button(label='Delete Sample!!',button_type='danger')
+        self.loadImageButton=Button(label='Upload Image', button_type='success')
+        self.deleteButton=Button(label='Delete Sample!!', button_type='danger')
         self.widget=Column(
                 self.idLabel,
                 self.speciesLabel,
@@ -177,6 +188,8 @@ class InfoPanel():
                 self.imagesLabel,
                 self.loadImageButton,
                 self.deleteButton)
+
+
     def updateText(self,ID,species,Type,birthDate,notes,images,objectref):
         assert isinstance(notes,list)
         assert isinstance(images,list)
@@ -187,6 +200,7 @@ class InfoPanel():
         self.notesLabel.text='Notes = \n' + '\n'.join([str(i+1)+': '+v['text']+' | '+v['date'] for i,v in enumerate(notes)])
         self.imagesLabel.text='# of Images = ' + str(len(images))
         self.object=objectref
+
 
 class NewSamplePanel():
     def __init__(self):
@@ -203,20 +217,21 @@ class NewSamplePanel():
                [self.dateText],
                [self.copiesSelector],
                [self.button]
-               ]),title='New Sample')
+               ]), title='New Sample')
+
 
 class ImagePanel():
     def __init__(self):
-        self.plot=bokeh.plotting.figure(plot_width=500,plot_height=500,
-                         x_range=Range1d(0,1,bounds=(-0.25,1.25)),
-                         y_range=Range1d(0,1,bounds=(-0.25,1.25)),
+        self.plot = bokeh.plotting.figure(plot_width=500, plot_height=500,
+                         x_range=Range1d(0, 1, bounds=(-0.25, 1.25)),
+                         y_range=Range1d(0, 1, bounds=(-0.25, 1.25)),
                          )
-        self.plot.tools.pop(-1) #remove help tool
-        self.plot.tools.pop(-2) #remove save tool
-        self.plot.toolbar.active_scroll=self.plot.tools[1] #activate wheel scroll
+        self.plot.tools.pop(-1)  # remove help tool
+        self.plot.tools.pop(-2)  # remove save tool
+        self.plot.toolbar.active_scroll = self.plot.tools[1] #activate wheel scroll
         self.plot.toolbar.logo = None
-        self.plot.xaxis.visible = None
-        self.plot.yaxis.visible = None
+        self.plot.xaxis.visible = False
+        self.plot.yaxis.visible = False
         self.plot.xgrid.grid_line_color = None
         self.plot.ygrid.grid_line_color = None
         self.plot.outline_line_alpha = 0
@@ -242,7 +257,7 @@ class Page():
         self.newSamplePanel = NewSamplePanel()
         self.imagePanel=ImagePanel()
         self.uploadfileSource=ColumnDataSource({'fileContents':[], 'fileName':[]})
-        self.infoPanel.loadImageButton.callback = CustomJS(args=dict(file_source=self.uploadfileSource), code = """
+        self.infoPanel.loadImageButton.js_on_click(CustomJS(args=dict(file_source=self.uploadfileSource), code = """
             function read_file(filename) {
                 var reader = new FileReader();
                 reader.onload = load_handler;
@@ -289,7 +304,7 @@ class Page():
             }
             input.click();
 
-            """)
+            """))
         self.uploadfileSource.on_change('data',self.uploadCallback)
         self.plotInfoRow=Row(self.graph.widget,self.infoPanel.widget)
         self.dialog=Dialog(self.graph.plot)
@@ -485,6 +500,7 @@ class Dialog:
         self.dataIn.data = {'type':[typ],'msg':[msg]}
         self.trig.size+=1
         self.dataOut.on_change('data',self.process)
+
     def process(self,attr,old,new):
         if new['ret']!=[]:
             print('proc')

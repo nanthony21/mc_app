@@ -4,13 +4,14 @@ Created on Sun Oct 22 15:36:35 2017
 
 @author: Nick
 """
-from sample import Sample
+from mc_app.sample import Sample
 import networkx as nx
 from bokeh.models import Select, CustomJS, Slider, Panel, ColumnDataSource, PreText, Tabs, Column, RadioButtonGroup, \
     Dropdown, Row, Button, Plot, DataTable, TextInput, TableColumn, Range1d, TapTool, PanTool, HoverTool, WheelZoomTool, \
     Paragraph, ResetTool
 import bokeh.plotting
 import bokeh.palettes
+import bokeh.events
 import datetime
 from PIL import Image, ExifTags
 import base64
@@ -19,79 +20,82 @@ import glob
 import os
 
 
-class myGraph():
-    def tree_pos(self, G, root=1, width=1., vert_gap=0.2, vert_loc=0, xcenter=0,
-                 pos=None, parent=None):
-
-        '''If there is a cycle that is reachable from root, then this will see infinite recursion.
-           G: the graph must be of a directed type
-           root: the root node of current branch
-           width: horizontal space allocated for this branch - avoids overlap with other branches
-           vert_gap: gap between levels of hierarchy
-           vert_loc: vertical location of root
-           xcenter: horizontal location of root
-           pos: a dict saying where all nodes go if they have been assigned
-           parent: parent of this branch.'''
-        if pos is None:
-            pos = {root: (xcenter, vert_loc)}
-        else:
-            pos[root] = (xcenter, vert_loc)
-        neighbors = list(G.neighbors(root))
-        if len(list(neighbors)) != 0:
-            dx = width / len(neighbors)
-            nextx = xcenter - width / 2 - dx / 2
-            for neighbor in neighbors:
-                nextx += dx
-                pos = self.tree_pos(G, neighbor, width=dx, vert_gap=vert_gap,
-                                    vert_loc=vert_loc - vert_gap, xcenter=nextx, pos=pos,
-                                    parent=root)
+def side_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=1):
+    if root == None:  # first iteration. find all origins
+        roots = [i for i in [j for j in G.nodes()] if G.nodes()[i]['parent'] == 'null']
+        for num, i in enumerate(roots):
+            pos = side_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
+                                pos=pos)
         return pos
+    if pos == None:
+        pos = {root: center}
+    else:
+        pos[root] = center
+    neighbors = list(G.neighbors(root))
+    if len(neighbors) != 0:
+        dy = height / (len(neighbors))
+        nexty = center[1] - height / 2 - dy / 2
+        for neighbor in neighbors:
+            nexty += dy
+            pos = side_pos(G, root=neighbor, height=dy, center=(center[0] + xgap, nexty), pos=pos)
+    return pos
 
-    def side_pos(self, G, root=None, height=1, center=(0, 0), pos=None, xgap=1):
-        if root == None:  # first iteration. find all origins
-            roots = [i for i in [j for j in G.nodes()] if G.nodes()[i]['parent'] == 'null']
-            for num, i in enumerate(roots):
-                pos = self.side_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
-                                    pos=pos)
-            return pos
-        if pos == None:
-            pos = {root: center}
-        else:
-            pos[root] = center
-        neighbors = list(G.neighbors(root))
-        if len(neighbors) != 0:
-            dy = height / (len(neighbors))
-            nexty = center[1] - height / 2 - dy / 2
-            for neighbor in neighbors:
-                nexty += dy
-                pos = self.side_pos(G, root=neighbor, height=dy, center=(center[0] + xgap, nexty), pos=pos)
-        return pos
 
-    def date_pos(self, G, root=None, height=1, center=(0, 0), pos=None, xgap=0.2, orig_date=None):
-        if root is None:  # first iteration. find all origins
-            roots = [i for i in [j for j in G.nodes()] if
-                     G.nodes()[i]['parent'] == 'null']  # list of nodes with no parents (root nodes)
-            dates = [datetime.datetime.strptime(G.nodes(data=True)[i]['birthDate'], '%d-%m-%Y') for i in
-                     roots]  # a list of the birthdates for each  of the root samples
-            orig_date = min(dates)  # The earliest of the dates
-            for num, i in enumerate(roots):
-                pos = self.date_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
-                                    pos=pos, orig_date=orig_date)
-            return pos
-        if pos is None:
-            pos = {root: center}
-        else:
-            pos[root] = center
-        neighbors = list(G.neighbors(root))
-        if len(neighbors) != 0:
-            dy = height / (len(neighbors))
-            nexty = center[1] - height / 2 - dy / 2
-            for neighbor in neighbors:
-                nexty += dy
-                birthDate = datetime.datetime.strptime(G.nodes(data=True)[neighbor]['birthDate'], '%d-%m-%Y')
-                nextx = (birthDate - orig_date).days
-                pos = self.date_pos(G, root=neighbor, height=dy, center=(nextx, nexty), pos=pos, orig_date=orig_date)
+def date_pos(G, root=None, height=1, center=(0, 0), pos=None, xgap=0.2, orig_date=None):
+    if root is None:  # first iteration. find all origins
+        roots = [i for i in [j for j in G.nodes()] if
+                 G.nodes()[i]['parent'] == 'null']  # list of nodes with no parents (root nodes)
+        dates = [datetime.datetime.strptime(G.nodes(data=True)[i]['birthDate'], '%d-%m-%Y') for i in
+                 roots]  # a list of the birthdates for each  of the root samples
+        orig_date = min(dates)  # The earliest of the dates
+        for num, i in enumerate(roots):
+            pos = date_pos(G, root=i, height=1 / (len(roots) + 1), center=(0, (num + 1) / (len(roots) + 1)),
+                                pos=pos, orig_date=orig_date)
         return pos
+    if pos is None:
+        pos = {root: center}
+    else:
+        pos[root] = center
+    neighbors = list(G.neighbors(root))
+    if len(neighbors) != 0:
+        dy = height / (len(neighbors))
+        nexty = center[1] - height / 2 - dy / 2
+        for neighbor in neighbors:
+            nexty += dy
+            birthDate = datetime.datetime.strptime(G.nodes(data=True)[neighbor]['birthDate'], '%d-%m-%Y')
+            nextx = (birthDate - orig_date).days
+            pos = date_pos(G, root=neighbor, height=dy, center=(nextx, nexty), pos=pos, orig_date=orig_date)
+    return pos
+
+
+def tree_pos(G, root=1, width=1., vert_gap=0.2, vert_loc=0, xcenter=0, pos=None, parent=None):
+
+    '''If there is a cycle that is reachable from root, then this will see infinite recursion.
+       G: the graph must be of a directed type
+       root: the root node of current branch
+       width: horizontal space allocated for this branch - avoids overlap with other branches
+       vert_gap: gap between levels of hierarchy
+       vert_loc: vertical location of root
+       xcenter: horizontal location of root
+       pos: a dict saying where all nodes go if they have been assigned
+       parent: parent of this branch.'''
+    if pos is None:
+        pos = {root: (xcenter, vert_loc)}
+    else:
+        pos[root] = (xcenter, vert_loc)
+    neighbors = list(G.neighbors(root))
+    if len(list(neighbors)) != 0:
+        dx = width / len(neighbors)
+        nextx = xcenter - width / 2 - dx / 2
+        for neighbor in neighbors:
+            nextx += dx
+            pos = tree_pos(G, neighbor, width=dx, vert_gap=vert_gap,
+                                vert_loc=vert_loc - vert_gap, xcenter=nextx, pos=pos,
+                                parent=root)
+    return pos
+
+
+class MyGraph:
 
     def __init__(self):
         slidercallback = CustomJS(args=dict(), code='''
@@ -99,7 +103,7 @@ class myGraph():
            plot.x_range.end=plot.x_range.start + days;
            plot.x_range.change.emit();
         ''')
-        self.pos = self.side_pos
+        self.pos = tree_pos# side_pos
         self.slider = Slider(start=1, end=60, value=7, step=1, title="X Zoom")
         self.plot = bokeh.plotting.figure(plot_width=400, plot_height=400,
                                           x_range=Range1d(-1, -1 + self.slider.value, bounds=(-2, 4e6)),
@@ -241,7 +245,7 @@ class ImagePanel():
         self.plot.ygrid.grid_line_color = None
         self.plot.outline_line_alpha = 0
         menu = []
-        self.imgSelectDropDown = Dropdown(label="SelectImage", button_type="warning", menu=menu)
+        self.imgSelectDropDown: Dropdown = Dropdown(label="SelectImage", button_type="warning", menu=menu)
         self.widget = Panel(child=Row(self.plot, self.imgSelectDropDown), title='Images')
 
     def reset(self):
@@ -251,15 +255,14 @@ class ImagePanel():
         self.plot.y_range.end = 1
         if len(self.plot.renderers) > 0:
             self.plot.renderers.pop(-1)
-        self.imgSelectDropDown.value = None
+        # self.imgSelectDropDown.value = None
 
 
-class Page():
-
+class Page:
     def __init__(self, sqlsession):
         self.doc = bokeh.plotting.curdoc()
         self.sqlsession = sqlsession
-        self.graph = myGraph()
+        self.graph = MyGraph()
         self.infoPanel = InfoPanel()
         self.newSamplePanel = NewSamplePanel()
         self.imagePanel = ImagePanel()
@@ -321,7 +324,7 @@ class Page():
         self.graph.renderer.node_renderer.data_source.on_change('selected', self.nodeSelectCallback)
         self.graph.xSelectSwitch.on_change('active', self.xSelectCallback)
         self.infoPanel.addNoteButton.on_click(self.addNoteCallback)
-        self.imagePanel.imgSelectDropDown.on_change('value', self.selectImageCallback)
+        self.imagePanel.imgSelectDropDown.on_click(self.selectImageCallback)
         self.infoPanel.deleteButton.on_click(self.deleteSampleCallback)
 
         ''''''
@@ -342,10 +345,10 @@ class Page():
 
     '''Callbacks!!!!!!!!!!!!'''
 
-    def nodeSelectCallback(self, attr, old, new):
+    def nodeSelectCallback(self, attr: str, old, new: bokeh.models.Selection):
         print('node call')
         try:
-            index = new['1d']['indices'][0]
+            index = new.indices[0]
             datasource = self.graph.renderer.node_renderer.data_source
             ID = datasource.data['id'][index]
             species = datasource.data['species'][index]
@@ -385,7 +388,7 @@ class Page():
         self.dialog.open('alert', "Successfully added new sample: {}".format(idstring))
 
     def addNoteCallback(self, note=None):
-        if note == None:
+        if note is None:
             print('note added')
             self.dialog.open('prompt', 'Note', self.addNoteCallback)
         elif type(note) == str:
@@ -436,7 +439,8 @@ class Page():
         self.loadData()
         self.dialog.open('alert', 'Image successfully added.')
 
-    def selectImageCallback(self, attr, old, new):
+    def selectImageCallback(self, event: bokeh.events.ButtonClick):
+        new = event.item
         if new != None:
             self.imagePanel.reset()
             imgurl = os.path.join("myco_app", 'static', new + ".png")
@@ -451,10 +455,10 @@ class Page():
     def xSelectCallback(self, attr, old, new):
         print(new)
         if new == 1:
-            self.graph.pos = self.graph.date_pos
+            self.graph.pos = date_pos
             self.graph.plot.xaxis[0].axis_label = 'Days'
         elif new == 0:
-            self.graph.pos = self.graph.side_pos
+            self.graph.pos = side_pos
             self.graph.plot.xaxis[0].axis_label = 'Generations'
         else:
             print("xSelect buttton choice not valid")

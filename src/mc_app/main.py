@@ -6,7 +6,7 @@ Created on Mon Oct 23 20:11:56 2017
 """
 import random
 from sample import Sample
-from src.mc_app.ui.visual import Page
+from mc_app.ui.visual import Page
 import sqlalchemy as sq
 import bokeh.io
 import bokeh.plotting

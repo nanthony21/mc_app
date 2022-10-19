@@ -3,15 +3,21 @@
 Created on Mon Oct 23 20:11:56 2017
 
 @author: Nick
+
+
+run this with the scripts/runit script to start the server.
+Do not add a __main__ guard
 """
 import random
 from sample import Sample
-from mc_app.ui.visual import Page
+from mc_app.ui import Page
 import sqlalchemy as sq
-import bokeh.io
 import bokeh.plotting
 import logging
 import sys
+
+#### User input
+useRealDB = False  # If true then a database will be loaded from file. else a fake database will be generated
 
 
 def configureLogger():
@@ -26,7 +32,6 @@ def configureLogger():
     return root
 
 logger = configureLogger()
-useRealDB = False
 
 if useRealDB:
     """For the real database"""
@@ -63,7 +68,7 @@ else:
 
 page = Page(session)
 
-bokeh.io.output_file("interactive_graphs.html")
-bokeh.io.show(page.tabs)
+# bokeh.io.output_file("interactive_graphs.html")
+# bokeh.io.show(page.tabs)
 bokeh.plotting.curdoc().add_root(page.tabs)
 

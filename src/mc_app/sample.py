@@ -4,11 +4,13 @@ Created on Mon Oct 23 20:03:48 2017
 
 @author: Nick
 """
+from __future__ import annotations
 import enum
 import datetime
 import sqlalchemy as sq
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.mutable import MutableList
+import typing as t_
 
 SqlBase = declarative_base()
 
@@ -35,24 +37,29 @@ class Sample(SqlBase):
 
     @enum.unique
     class Type(enum.Enum):
-        agar = 1
-        grain = 2
-        brfcake = 3
-        fruit = 4
-        syringe = 5
-        bulk = 6
+        Agar = enum.auto()
+        Grain = enum.auto()
+        SporePrint = enum.auto()
+        Fruit = enum.auto()
+        Syringe = enum.auto()
+        Bulk = enum.auto()
+        WBHW = enum.auto()
+        Slant = enum.auto()
 
-    class Note(object):
+
+    class Note:
         def __init__(self, text):
             self.text = text
             self.date = datetime.datetime.now(datetime.timezone.utc)
 
-    def __init__(self, parent, stypename, birthdate=None):
+    def __init__(self, parent, sampleType: t_.Union[str, Sample.Type], birthdate=None):
         # If it is an original sample then sample should be set to the species name
+        if isinstance(sampleType, Sample.Type):
+            sampleType = sampleType.name # Convert to string
         try:
-            stype = Sample.Type[stypename]
+            stype = Sample.Type[sampleType]
         except KeyError:
-            raise KeyError('Sample type, {0}, is not valid'.format(stypename))
+            raise KeyError('Sample type, {0}, is not valid'.format(sampleType))
         self.type = stype.value
         if (isinstance(parent, list) and isinstance(parent[0], Sample)):
             self.parent = parent

@@ -1,7 +1,8 @@
 import datetime
 import typing as t_
 import bokeh
-from bokeh.models import Slider, Range1d, RadioButtonGroup, TapTool, WheelZoomTool, PanTool, ResetTool, Column, CustomJS
+from bokeh.models import Slider, Range1d, RadioButtonGroup, TapTool, WheelZoomTool, PanTool, ResetTool, Column, \
+    CustomJS, HoverTool
 import networkx as nx
 from mc_app.sample import Sample
 
@@ -85,7 +86,7 @@ def tree_pos(G, root: int = 1, width: float = 1., vert_gap: float = 0.2, vert_lo
 class MyGraph:
     def __init__(self):
         self._graph_layout = side_pos
-        self.slider = Slider(start=1, end=60, value=7, step=1, title="X Zoom")
+        self.slider = Slider(start=5, end=365, value=7, step=1, title="X Zoom")
         self.plot = bokeh.plotting.figure(plot_width=400, plot_height=400,
                                           x_range=Range1d(-1, -1 + self.slider.value, bounds=(-2, 4e6)),
                                           y_range=Range1d(0, 1, bounds=(-0.5, 1.5)),
@@ -109,17 +110,17 @@ class MyGraph:
         self.plot.xaxis[0].ticker.min_interval = 1
         self.plot.xaxis[0].ticker.num_minor_ticks = 0
         self.plot.xaxis[0].axis_label = 'Generations'
-        self.pallete = bokeh.palettes.Spectral4
+
         tools = [
             TapTool(),
             WheelZoomTool(),
             PanTool(),
-            ResetTool()]
-        # HoverTool(tooltips={'ID':"@id",'Type':'@type','Notes':'@notes'})]
+            ResetTool(),
+            HoverTool(tooltips=None)]#tooltips={'ID':"@id",'Type':'@type','Notes':'@notes'})]
         tools[1].dimensions = 'height'  # vertical zoom only
         self.plot.add_tools(*tools)
         self.plot.toolbar.active_scroll = tools[1]  # sets the scroll zoom to be active immediately.
-        self.colors = ['red', 'blue', 'green', 'purple', 'cyan', 'yellow']
+
         self.widget = Column(self.plot, self.slider, self.xSelectSwitch)
 
     def setLayoutByDate(self, byDate: bool):
@@ -143,19 +144,22 @@ class MyGraph:
         # use the first item in the nodelist to generate the possible data sources for the hover tool
         for k, v in self.nodelist[0][1].items():
             self.renderer.node_renderer.data_source.add([i[1][k] for i in self.nodelist], name=k)
+        pallete = bokeh.palettes.Colorblind8
+        assert len(pallete) >= len(Sample.Type)
         self.renderer.node_renderer.data_source.add(  # Set color based on sampletype
-            [self.colors[Sample.Type[nodeData['type']].value - 1] for nodeId, nodeData in self.nodelist],
+            [pallete[Sample.Type[nodeData['type']].value-1] for nodeId, nodeData in self.nodelist],
             'color')
-        self.renderer.node_renderer.glyph = bokeh.models.Circle(size=20, fill_color='color')  # self.pallete[0])
-        self.renderer.node_renderer.selection_glyph = bokeh.models.Circle(size=15, fill_color='color')
-        self.renderer.node_renderer.hover_glyph = bokeh.models.Circle(size=15, fill_color=self.pallete[1])
+
+        self.renderer.node_renderer.glyph = bokeh.models.Circle(size=20, fill_color='color')  # pallete[0])
+        self.renderer.node_renderer.selection_glyph = bokeh.models.Circle(size=5, fill_color='color')
+        self.renderer.node_renderer.hover_glyph = bokeh.models.Circle(size=15, fill_color=pallete[0])
 
         self.renderer.edge_renderer.glyph = bokeh.models.MultiLine(line_color="#CCCCCC", line_alpha=0.8, line_width=5)
-        self.renderer.edge_renderer.selection_glyph = bokeh.models.MultiLine(line_color=self.pallete[0], line_width=5)
-        self.renderer.edge_renderer.hover_glyph = bokeh.models.MultiLine(line_color=self.pallete[1], line_width=5)
+        self.renderer.edge_renderer.selection_glyph = bokeh.models.MultiLine(line_color=pallete[0], line_width=5)
+        self.renderer.edge_renderer.hover_glyph = bokeh.models.MultiLine(line_color=pallete[3], line_width=5)
 
-        self.renderer.selection_policy = bokeh.models.graphs.NodesAndLinkedEdges()
-        self.renderer.inspection_policy = bokeh.models.graphs.NodesOnly()
+        self.renderer.selection_policy = bokeh.models.graphs.NodesOnly()
+        self.renderer.inspection_policy = bokeh.models.graphs.NodesAndLinkedEdges()
 
         try:
             oldrenderer = \

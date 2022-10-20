@@ -2,10 +2,11 @@ import base64
 import glob
 import io
 import os
+import pathlib as pl
 import typing as t_
 import bokeh
 from PIL import ExifTags
-from PIL.Image import Image
+from PIL import Image
 from bokeh.models import ColumnDataSource, CustomJS, DataTable, TableColumn, Tabs, Panel, Row
 
 from ._graph import MyGraph
@@ -18,6 +19,7 @@ from ._dialog import openDialog, DialogType
 
 class Page:
     def __init__(self, sqlsession):
+        self.resourcePath = pl.Path('static')
         self.sqlsession = sqlsession
         self.graph = MyGraph()
         self.infoPanel = InfoPanel()
@@ -86,6 +88,7 @@ class Page:
         ''''''
         self.tab1 = Panel(child=self.plotInfoRow, title='Plot')
         self.tab2 = Panel(child=self.dTable, title='Data')
+
         self.tabs = Tabs(tabs=[self.tab1, self.tab2, self.newSamplePanel.widget, self.imagePanel.widget])
 
     def loadData(self):
@@ -167,29 +170,30 @@ class Page:
             for orientation in ExifTags.TAGS.keys():
                 if ExifTags.TAGS[orientation] == 'Orientation':
                     break
-            if orientation in image._getexif().keys():
-                print('rotate')
-                exif = dict(image._getexif().items())
-                if exif[orientation] == 3:
-                    image = image.rotate(180, expand=True)
-                elif exif[orientation] == 6:
-                    image = image.rotate(270, expand=True)
-                elif exif[orientation] == 8:
-                    image = image.rotate(90, expand=True)
-                elif exif[orientation] == 1:
-                    print('no rotation needed')
-                else:
-                    print('no valid rotation found')
-                print('orientation value = ', exif[orientation])
+            if image._getexif() is not None:
+                if orientation in image._getexif().keys():
+                    print('rotate')
+                    exif = dict(image._getexif().items())
+                    if exif[orientation] == 3:
+                        image = image.rotate(180, expand=True)
+                    elif exif[orientation] == 6:
+                        image = image.rotate(270, expand=True)
+                    elif exif[orientation] == 8:
+                        image = image.rotate(90, expand=True)
+                    elif exif[orientation] == 1:
+                        print('no rotation needed')
+                    else:
+                        print('no valid rotation found')
+                    print('orientation value = ', exif[orientation])
         except:
             raise TypeError("Failed to upload file")
-        imgs = glob.glob(os.path.join('static', '*.png'))
+        imgs = list(self.resourcePath.glob(".png"))
         if len(imgs) == 0:
             newfname = '1'
         else:
             newfname = str(max([int(i.split(os.sep)[-1][:-4]) for i in imgs]) + 1)
         self.infoPanel.object.addImage(newfname)
-        image.save(os.path.join('static', newfname + '.png'))
+        image.save(str(self.resourcePath / f"{newfname}.png"))
         self.sqlsession.commit()
         self.loadData()
         openDialog(self.graph.plot, DialogType.ALERT, 'Image successfully added.')
@@ -198,11 +202,12 @@ class Page:
         new = event.item
         if new is not None:
             self.imagePanel.reset()
-            imgurl = os.path.join("myco_app", 'static', new + ".png")
+            fName = pl.Path('static') / f"{new}.png"
+            imgurl = str((fName).absolute())
             img_source = ColumnDataSource(dict(url=[imgurl]))
             if len(self.imagePanel.plot.renderers) > 0:
                 self.imagePanel.plot.renderers.pop(-1)
-            width, height = Image.open(os.path.join('static', new + '.png')).size
+            width, height = Image.open(str(fName)).size
             newWidth = width / max((width, height))
             newHeight = height / max((width, height))
             self.imagePanel.plot.image_url(url='url', x=0, y=1, w=newWidth, h=newHeight, source=img_source)
@@ -226,7 +231,7 @@ class Page:
             if len(self.infoPanel.object.children) == 0:
                 imFiles = [i.text for i in self.infoPanel.object.images]
                 for i in imFiles:
-                    os.remove(os.path.join('static', i + '.png'))
+                    (self.resourcePath / f"{i}.png").unlink()
                 self.sqlsession.delete(self.infoPanel.object)
                 self.sqlsession.commit()
                 self.loadData()

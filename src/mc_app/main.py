@@ -4,9 +4,6 @@ Created on Mon Oct 23 20:11:56 2017
 
 @author: Nick
 
-
-run this with the scripts/runit script to start the server.
-Do not add a __main__ guard
 """
 import random
 from sample import Sample
@@ -16,8 +13,10 @@ import bokeh.plotting
 import logging
 import sys
 import datetime
+
+
 #### User input
-useRealDB = False  # If true then a database will be loaded from file. else a fake database will be generated
+useRealDB = True  # If true then a database will be loaded from file. else a fake database will be generated
 
 
 def configureLogger():

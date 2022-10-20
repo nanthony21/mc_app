@@ -139,27 +139,26 @@ class MyGraph:
         edges = [(i[0], j) for i in self.nodelist for j in i[1]['children']]
         self._graph.add_edges_from(edges)
         '''Load nx graph to bokeh renderer'''
-        self.renderer: bokeh.models.GraphRenderer = bokeh.plotting.from_networkx(self._graph, self._graph_layout)
-
+        gRenderer: bokeh.models.GraphRenderer = bokeh.plotting.from_networkx(self._graph, self._graph_layout)
+        nodeRenderer = gRenderer.node_renderer
         # use the first item in the nodelist to generate the possible data sources for the hover tool
         for k, v in self.nodelist[0][1].items():
-            self.renderer.node_renderer.data_source.add([i[1][k] for i in self.nodelist], name=k)
+            nodeRenderer.data_source.add([i[1][k] for i in self.nodelist], name=k)
         pallete = bokeh.palettes.Colorblind8
         assert len(pallete) >= len(Sample.Type)
-        self.renderer.node_renderer.data_source.add(  # Set color based on sampletype
+        nodeRenderer.data_source.add(  # Set color based on sampletype
             [pallete[Sample.Type[nodeData['type']].value-1] for nodeId, nodeData in self.nodelist],
             'color')
 
-        self.renderer.node_renderer.glyph = bokeh.models.Circle(size=20, fill_color='color')  # pallete[0])
-        self.renderer.node_renderer.selection_glyph = bokeh.models.Circle(size=5, fill_color='color')
-        self.renderer.node_renderer.hover_glyph = bokeh.models.Circle(size=15, fill_color=pallete[0])
+        nodeRenderer.glyph = bokeh.models.Circle(size=20, fill_color='color')  # pallete[0])
+        nodeRenderer.hover_glyph = bokeh.models.Circle(size=15, fill_color='color')
 
-        self.renderer.edge_renderer.glyph = bokeh.models.MultiLine(line_color="#CCCCCC", line_alpha=0.8, line_width=5)
-        self.renderer.edge_renderer.selection_glyph = bokeh.models.MultiLine(line_color=pallete[0], line_width=5)
-        self.renderer.edge_renderer.hover_glyph = bokeh.models.MultiLine(line_color=pallete[3], line_width=5)
+        gRenderer.edge_renderer.glyph = bokeh.models.MultiLine(line_color="#CCCCCC", line_alpha=0.8, line_width=5)
+        gRenderer.edge_renderer.hover_glyph = bokeh.models.MultiLine(line_color=pallete[1], line_width=5)
 
-        self.renderer.selection_policy = bokeh.models.graphs.NodesOnly()
-        self.renderer.inspection_policy = bokeh.models.graphs.NodesAndLinkedEdges()
+        gRenderer.selection_policy = bokeh.models.graphs.NodesOnly()
+        gRenderer.inspection_policy = bokeh.models.graphs.NodesAndLinkedEdges()
+        self.renderer = gRenderer  # this is required
 
         try:
             oldrenderer = \
@@ -170,7 +169,7 @@ class MyGraph:
             oldrenderer = None
         if oldrenderer:
             self.plot.renderers.pop(oldrenderer[0])
-        self.plot.renderers.append(self.renderer)
+        self.plot.renderers.append(gRenderer)
         # If something was previously selected add it reselect it now
         if oldsel:
-            self.renderer.node_renderer.data_source.selected.indices = oldsel.indices
+            nodeRenderer.data_source.selected.indices = oldsel.indices

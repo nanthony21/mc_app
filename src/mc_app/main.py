@@ -9,14 +9,14 @@ import random
 from sample import Sample
 from mc_app.ui import Page
 import sqlalchemy as sq
-import bokeh.plotting
+import bokeh.document
 import logging
 import sys
 import datetime
 
 
 #### User input
-useRealDB = True  # If true then a database will be loaded from file. else a fake database will be generated
+useRealDB = False  # If true then a database will be loaded from file. else a fake database will be generated
 
 
 def configureLogger():
@@ -75,9 +75,10 @@ else:
 '''*****************************************************'''
 from bokeh.server.server import Server
 
-def bkapp(doc):
+def bkapp(doc: bokeh.document.Document):
     page = Page(session)
     doc.add_root(page.tabs)
+    doc.title = "Myco Tracker"
 
 server = Server(
     {"/": bkapp},
@@ -85,7 +86,6 @@ server = Server(
     allow_websocket_origin=["*"],
     port=6004
 )
-# --allow-websocket-origin * --port 6004
 
 # start timers and services and immediately return
 server.start()

@@ -90,7 +90,8 @@ class MyGraph:
         self.plot = bokeh.plotting.figure(plot_width=400, plot_height=400,
                                           x_range=Range1d(-1, -1 + self.slider.value, bounds=(-2, 4e6)),
                                           y_range=Range1d(0, 1, bounds=(-0.5, 1.5)),
-                                          tools='')
+                                          tools='',
+                                          sizing_mode="stretch_width")
 
         self.slider.js_on_change(
             'value',
@@ -121,7 +122,7 @@ class MyGraph:
         self.plot.add_tools(*tools)
         self.plot.toolbar.active_scroll = tools[1]  # sets the scroll zoom to be active immediately.
 
-        self.widget = Column(self.plot, self.slider, self.xSelectSwitch)
+        self.widget = Column(self.plot, self.slider, self.xSelectSwitch, sizing_mode="scale_width")
 
     def setLayoutByDate(self, byDate: bool):
         if byDate:

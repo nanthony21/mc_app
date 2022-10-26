@@ -3,8 +3,8 @@ import pathlib as pl
 import typing as t_
 import bokeh
 from PIL import ExifTags, Image
-from bokeh.models import ColumnDataSource, CustomJS, DataTable, TableColumn, Tabs, Panel, Row
-
+from bokeh.models import ColumnDataSource, DataTable, TableColumn, Tabs, Panel, Row
+from bokeh.layouts import column
 from ._graph import MyGraph
 from ._infoPanel import InfoPanel
 from ._imagePanel import ImagePanel
@@ -12,21 +12,26 @@ from ._newSamplePanel import NewSamplePanel
 from ..sample import Sample
 from ._dialog import openDialog, DialogType
 from mc_app import resourcePath
+import numpy as np
+import base64
+import io
+import os
+from PIL import ExifTags, Image
+from ._dialog import openDialog, DialogType
+from mc_app import resourcePath
+from mc_app.imgManager import ImageManager
 
 class Page:
     def __init__(self, sqlsession):
         self.sqlsession = sqlsession
+        self.imgManager = ImageManager(resourcePath / "images")
         self.graph = MyGraph()
 
-        def updateDataCB():
-            self.sqlsession.commit()
-            self.loadData()
-
-        self.infoPanel = InfoPanel(updateDataCB, self.graph.plot)
+        self.infoPanel = InfoPanel()
         self.newSamplePanel = NewSamplePanel()
         self.imagePanel = ImagePanel()
 
-        self.plotInfoRow = Row(self.graph.widget, self.infoPanel.widget, sizing_mode="scale_width")
+        plotInfoRow = Row(self.graph.widget, self.infoPanel.widget, sizing_mode="scale_width")
         self.loadData()
         '''Callbacks!!!!!!'''
         self.newSamplePanel.button.on_click(self.newSampleCallback)
@@ -35,12 +40,14 @@ class Page:
         self.infoPanel.addNoteButton.on_click(self.addNoteCallback)
         self.imagePanel.imgSelectDropDown.on_click(self.selectImageCallback)
         self.infoPanel.deleteButton.on_click(self.deleteSampleCallback)
+        self.infoPanel.uploadfileSource.on_change('data', self.uploadCallback)
 
         ''''''
-        self.tab1 = Panel(child=self.plotInfoRow, title='Plot')
-        self.tab2 = Panel(child=self.dTable, title='Data')
+        plotCol = column(plotInfoRow, self.newSamplePanel.layout)
+        tab1 = Panel(child=plotCol, title='Plot')
+        tab2 = Panel(child=self.dTable, title='Data')
 
-        self.tabs = Tabs(tabs=[self.tab1, self.tab2, self.newSamplePanel.widget, self.imagePanel.widget], sizing_mode="scale_width")
+        self.tabs = Tabs(tabs=[tab1, tab2, self.imagePanel.widget], sizing_mode="scale_width")
 
     def loadData(self):
         self.graph.getFromDB(self.sqlsession)
@@ -68,18 +75,18 @@ class Page:
             Type = datasource.data['type'][index]
             birthDate = datasource.data['birthDate'][index]
             notes = datasource.data['notes'][index]
-            images = datasource.data['images'][index]
             objectRef = self.sqlsession.query(Sample).filter_by(id=int(ID)).first()
+            images = self.imgManager.getImageNums(objectRef)
         except IndexError:  # nothing is selected
             ID, species, Type, birthDate, notes, images, objectRef = (None, None, None, None, [], [], None)
+        self.selectedSample = objectRef
         self.infoPanel.updateText(ID, species, Type, birthDate, notes, images, objectRef)
         self.newSamplePanel.parentText.value = str(ID)
         if objectRef:
-            self.imagePanel.imgSelectDropDown.menu = [(str(i + 1), v.text) for i, v in enumerate(objectRef.images)]
+            self.imagePanel.imgSelectDropDown.menu = [str(i) for i in self.imgManager.getImageNums(objectRef)]
         self.imagePanel.reset()
 
     def newSampleCallback(self):
-        print('new sample')
         panel = self.newSamplePanel
         try:
             ID = list(map(int, panel.parentText.value.split(',')))
@@ -105,25 +112,30 @@ class Page:
             print('note added')
             openDialog(self.graph.plot, DialogType.PROMPT, 'Note', self.addNoteCallback)
         elif type(note) == str:
-            self.infoPanel.object.addNote(note)
+            self.selectedSample.addNote(note)
             self.sqlsession.commit()
             self.loadData()
         else:
             print('type not valid', type(note))
 
     def selectImageCallback(self, event: bokeh.events.ButtonClick):
-        new = event.item
-        if new is not None:
+        imgNum: str = event.item
+        if imgNum is not None:
+            imgNum: int = int(imgNum)
             self.imagePanel.reset()
-            fName = pl.Path('static') / f"{new}.png"
-            imgurl = str((fName).absolute())
-            img_source = ColumnDataSource(dict(url=[imgurl]))
             if len(self.imagePanel.plot.renderers) > 0:
                 self.imagePanel.plot.renderers.pop(-1)
-            width, height = Image.open(str(fName)).size
+            im = self.imgManager.loadImage(self.selectedSample, imgNum)
+            im = im.convert("RGBA")
+            width, height = im.size
+            img = np.empty((height, width), dtype=np.uint32)
+            view = img.view(dtype=np.uint8).reshape((height, width, 4))
+            # Copy the RGBA image into view, flipping it so it comes right-side up
+            # with a lower-left origin
+            view[:, :, :] = np.flipud(np.asarray(im))
             newWidth = width / max((width, height))
             newHeight = height / max((width, height))
-            self.imagePanel.plot.image_url(url='url', x=0, y=1, w=newWidth, h=newHeight, source=img_source)
+            self.imagePanel.plot.image_rgba(image=[img], x=0, y=0, dw=newWidth, dh=newHeight)
 
     def xSelectCallback(self, attr, old, new):
         if new == 1:
@@ -135,10 +147,10 @@ class Page:
         self.loadData()
 
     def deleteSampleCallback(self, choice: bool = None):
-        if not self.infoPanel.object:
+        if not self.selectedSample:
             print("No object selected")
             return
-        if len(self.infoPanel.object.children) > 0:
+        if len(self.selectedSample.children) > 0:
             openDialog(self.graph.plot, DialogType.ALERT, 'Cannot delete a sample that has child samples')
             return
 
@@ -146,11 +158,52 @@ class Page:
             openDialog(self.graph.plot, DialogType.CONFIRM, "Are you sure you want to delete?",
                        self.deleteSampleCallback)
         elif choice:
-            imFiles = [i.text for i in self.infoPanel.object.images]
-            for i in imFiles:
-                (resourcePath / f"{i}.png").unlink()
-            self.sqlsession.delete(self.infoPanel.object)
+            imgs = self.imgManager.getImageNums(self.selectedSample)
+            for i in imgs:
+                self.imgManager.deleteImage(self.selectedSample, i)
+            self.sqlsession.delete(self.selectedSample)
             self.sqlsession.commit()
             self.loadData()
         else:
             print("Cancelled deletion")
+
+    def uploadCallback(self, attr, old, new):
+        print('filename:', self.infoPanel.uploadfileSource.data['file_name'])
+        raw_contents = self.infoPanel.uploadfileSource.data['file_contents'][0]
+        # remove the prefix that JS adds
+        prefix, b64_contents = raw_contents.split(",", 1)
+        file_contents = base64.b64decode(b64_contents)
+        file_io = io.BytesIO(file_contents)
+
+        try:
+            image = Image.open(file_io)
+            for orientation in ExifTags.TAGS.keys():
+                if ExifTags.TAGS[orientation] == 'Orientation':
+                    break
+            if image._getexif() is not None:
+                if orientation in image._getexif().keys():
+                    print('rotate')
+                    exif = dict(image._getexif().items())
+                    if exif[orientation] == 3:
+                        image = image.rotate(180, expand=True)
+                    elif exif[orientation] == 6:
+                        image = image.rotate(270, expand=True)
+                    elif exif[orientation] == 8:
+                        image = image.rotate(90, expand=True)
+                    elif exif[orientation] == 1:
+                        print('no rotation needed')
+                    else:
+                        print('no valid rotation found')
+                    print('orientation value = ', exif[orientation])
+        except:
+            openDialog(self.graph.plot, DialogType.ALERT, 'Failed to upload file.')
+            return
+        imgs = self.imgManager.getImageNums(self.selectedSample)
+        if len(imgs) == 0:
+            newNum = 0
+        else:
+            newNum = max(imgs) + 1
+        self.imgManager.saveImage(self.selectedSample, newNum, image)
+        self.sqlsession.commit()
+        self.loadData()
+        openDialog(self.graph.plot, DialogType.ALERT, 'Image successfully added.')

@@ -18,16 +18,16 @@ class NewSamplePanel:
         self.dateText = TextInput(title="Creation Date (format 'Day-Month-Year' UTC)",
                                   value=datetime.datetime.strftime(datetime.datetime.now(datetime.timezone.utc),
                                                                    '%d-%m-%Y'))
-        self.button = Button(label='Create!')
+        self.button = Button(label='Create!', button_type='success')
         self.copiesSelector = Select(title='Number of Copies', value=str(1), options=[str(i) for i in range(1, 10)])
-        self.widget = Panel(child=bokeh.layouts.layout([
+        self.layout = bokeh.layouts.layout([
             [self.parentText],
             [self.typeButtons],
             [self.noteText],
             [self.dateText],
             [self.copiesSelector],
             [self.button]
-        ]), title='New Sample')
+        ])
 
 
 

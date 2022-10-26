@@ -43,7 +43,7 @@ class Sample(SqlBase):
         Fruit = enum.auto()
         Syringe = enum.auto()
         Bulk = enum.auto()
-        WBHW = enum.auto()
+        HWWB = enum.auto()
         Slant = enum.auto()
 
 

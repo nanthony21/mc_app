@@ -10,7 +10,7 @@ class InfoPanel:
         self.speciesLabel = Paragraph(text='Species = ')
         self.typeLabel = Paragraph(text='Type = ')
         self.birthDateLabel = Paragraph(text='Birth Date = ')
-        self.notesLabel = PreText(text='Notes = ')
+        self.notesLabel = PreText(text='Notes = ', width=500, sizing_mode="stretch_height", style={"white-space": "pre-line"})
         self.addNoteButton = Button(label='Add Note', button_type='success')
         self.imagesLabel = Paragraph(text='# of Images = ')
         self.loadImageButton = Button(label='Upload Image', button_type='success')
